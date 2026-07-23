@@ -531,12 +531,16 @@ class AsyncFirecrawlClient:
     async def wait_batch_scrape(self, job_id: str, poll_interval: int = 2, timeout: Optional[int] = None) -> Any:
         start = asyncio.get_event_loop().time()
         while True:
+            # Poll with pagination disabled — we only need the status field,
+            # not the full result set, so avoid fetching every page on each poll.
             status = await async_batch.get_batch_scrape_status(
                 self.async_http_client, job_id,
                 pagination_config=PaginationConfig(auto_paginate=False)
             )
             if status.status in ["completed", "failed", "cancelled"]:
-                return status
+                # Re-fetch with default pagination so the returned job
+                # contains all result pages, not just the first one.
+                return await async_batch.get_batch_scrape_status(self.async_http_client, job_id)
             if timeout and (asyncio.get_event_loop().time() - start) > timeout:
                 raise TimeoutError("Batch wait timed out")
             await asyncio.sleep(poll_interval)
